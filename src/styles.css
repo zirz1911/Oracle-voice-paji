@@ -1,0 +1,195 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #e0e0e0;
+  background-color: #1e1e1e;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 320px;
+  height: 400px;
+  overflow: hidden;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #333;
+}
+
+h1 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #888;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+}
+
+.status.speaking .status-dot {
+  background: #4ade80;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.status.queued .status-dot {
+  background: #fbbf24;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.timeline::-webkit-scrollbar {
+  width: 6px;
+}
+
+.timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timeline::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+  font-style: italic;
+}
+
+.voice-entry {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.voice-entry:last-child {
+  border-bottom: none;
+}
+
+.voice-entry .time {
+  font-size: 10px;
+  color: #666;
+  min-width: 45px;
+}
+
+.voice-entry .content {
+  flex: 1;
+}
+
+.voice-entry .text {
+  color: #e0e0e0;
+  word-break: break-word;
+}
+
+.voice-entry .meta {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.voice-entry .agent {
+  color: #60a5fa;
+}
+
+.voice-entry .voice-name {
+  color: #a78bfa;
+}
+
+.voice-entry.speaking {
+  background: rgba(74, 222, 128, 0.1);
+  border-radius: 4px;
+  padding: 8px;
+  margin: 0 -8px;
+}
+
+.voice-entry.speaking .text {
+  color: #4ade80;
+}
+
+.voice-entry.queued .text {
+  color: #fbbf24;
+}
+
+.voice-entry.done .text {
+  color: #888;
+}
+
+footer {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+}
+
+button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.btn-secondary {
+  background: #333;
+  color: #aaa;
+}
+
+.btn-secondary:hover {
+  background: #444;
+  color: #fff;
+}

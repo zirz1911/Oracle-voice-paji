@@ -1,0 +1,20 @@
+# Agent Voice Configuration
+# Maps agent identifiers to macOS say voices
+# List available voices with: say -v '?'
+
+[voices]
+main = "Samantha"        # Clear, natural voice
+agent_1 = "Daniel"       # British male
+agent_2 = "Karen"        # Australian female
+agent_3 = "Rishi"        # Indian male
+subagent = "Daniel"      # British male
+default = "Samantha"     # Fallback
+
+[rate]
+# Speech rate in words per minute (default ~175, faster = 220+)
+main = 190           # Samantha slower
+agent_1 = 220
+agent_2 = 220
+agent_3 = 220
+subagent = 220
+default = 220

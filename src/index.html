@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Tray</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <div class="container">
+      <header>
+        <h1>Voice Timeline</h1>
+        <div class="status" id="status">
+          <span class="status-dot"></span>
+          <span id="status-text">Idle</span>
+        </div>
+      </header>
+
+      <div class="timeline" id="timeline">
+        <!-- Voice entries will be inserted here -->
+        <div class="empty-state">No voice messages yet</div>
+      </div>
+
+      <footer>
+        <button id="clear-btn" class="btn-secondary">Clear Done</button>
+        <button id="test-btn" class="btn-primary">Test Voice</button>
+      </footer>
+    </div>
+  </body>
+</html>
