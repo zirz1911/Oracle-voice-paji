@@ -83,6 +83,8 @@ mod tests {
             port: 8883,
             topic_speak: "custom/speak".to_string(),
             topic_status: "custom/status".to_string(),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
         };
 
         let json = serde_json::to_string(&config).expect("serialize");
@@ -107,6 +109,8 @@ mod tests {
             port: 9999,
             topic_speak: "test/speak".to_string(),
             topic_status: "test/status".to_string(),
+            username: None,
+            password: None,
         };
         let json = serde_json::to_string_pretty(&config).expect("serialize");
         fs::write(&config_path, &json).expect("write config");
