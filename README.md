@@ -7,27 +7,31 @@ Centralized text-to-speech for Claude Code agents. A macOS menu bar app (Tauri 2
 ```
 ORACLE VOICE TRAY - AI CONTEXT
 
-HTTP (port 37779):
+HTTP API (http://127.0.0.1:37779):
+  POST /speak    - Queue voice message
+  GET  /timeline - Get all entries
+  GET  /status   - Get status + MQTT state
+  GET  /         - API docs page
+
+Send voice (HTTP):
   curl -X POST http://127.0.0.1:37779/speak \
     -H "Content-Type: application/json" \
     -d '{"text":"Hello","agent":"Claude"}'
 
-MQTT (topic: voice/speak):
+Send voice (MQTT):
   mosquitto_pub -t voice/speak -m '{"text":"Hello","agent":"Claude"}'
-
-Check status:
-  curl -s http://127.0.0.1:37779/status
 
 Payload: {"text":"required", "voice":"Samantha", "rate":220, "agent":"name"}
 Voices: Samantha (default), Daniel, Karen, Rishi, Alex, Victoria
+Ports: 37779 (HTTP) | 1883 (MQTT default, configurable)
 
 Key files:
   src-tauri/src/lib.rs    - Main app, Tauri commands
-  src-tauri/src/http.rs   - HTTP server (port 37779)
+  src-tauri/src/http.rs   - HTTP server
   src-tauri/src/mqtt.rs   - MQTT client
   src-tauri/src/tray.rs   - Tray icon, voice queue
 
-Build: bun tauri dev (dev) | bun tauri build (release)
+Build: bun tauri dev | bun tauri build
 ```
 
 ## Features
