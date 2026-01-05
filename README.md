@@ -171,8 +171,8 @@ bun tauri build
 
 ## For AI Assistants
 
-<details>
-<summary>Click to expand AI context prompt</summary>
+<details open>
+<summary>AI context prompt (click to collapse)</summary>
 
 ### Context
 
