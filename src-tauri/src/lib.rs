@@ -101,17 +101,18 @@ fn process_queue(state: Arc<AppState>) {
         loop {
             let entry_opt = {
                 let mut timeline = state.timeline.lock().unwrap();
-                // Find first queued entry
-                timeline.iter_mut().find(|e| e.status == "queued").cloned()
+                // Find first queued entry and mark as speaking immediately (prevents re-processing)
+                if let Some(e) = timeline.iter_mut().find(|e| e.status == "queued") {
+                    e.status = "speaking".to_string();
+                    Some(e.clone())
+                } else {
+                    None
+                }
             };
 
             if let Some(entry) = entry_opt {
-                // Mark as speaking
+                // Update speaking state
                 {
-                    let mut timeline = state.timeline.lock().unwrap();
-                    if let Some(e) = timeline.iter_mut().find(|e| e.id == entry.id) {
-                        e.status = "speaking".to_string();
-                    }
                     *state.is_speaking.lock().unwrap() = true;
                 }
                 // Update tray icon to speaking
