@@ -9,6 +9,10 @@ pub struct MqttConfig {
     pub port: u16,
     pub topic_speak: String,
     pub topic_status: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 impl Default for MqttConfig {
@@ -18,6 +22,8 @@ impl Default for MqttConfig {
             port: 1883,
             topic_speak: "voice/speak".to_string(),
             topic_status: "voice/status".to_string(),
+            username: None,
+            password: None,
         }
     }
 }

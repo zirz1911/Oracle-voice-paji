@@ -326,6 +326,40 @@ button {
   color: #666;
 }
 
+/* Collapsible auth section */
+.auth-section {
+  margin-top: 8px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 0;
+}
+
+.auth-section summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #888;
+  user-select: none;
+}
+
+.auth-section summary:hover {
+  color: #aaa;
+}
+
+.auth-section[open] summary {
+  border-bottom: 1px solid #333;
+  margin-bottom: 8px;
+}
+
+.auth-section .form-group {
+  padding: 0 10px;
+  margin-bottom: 8px;
+}
+
+.auth-section .form-group:last-child {
+  padding-bottom: 8px;
+}
+
 /* Settings message */
 .settings-message {
   padding: 8px 10px;

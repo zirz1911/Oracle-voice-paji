@@ -127,7 +127,9 @@ fn save_mqtt_config(config: MqttConfig, state: tauri::State<'_, Arc<AppState>>) 
     let changed = config.broker != current.broker
         || config.port != current.port
         || config.topic_speak != current.topic_speak
-        || config.topic_status != current.topic_status;
+        || config.topic_status != current.topic_status
+        || config.username != current.username
+        || config.password != current.password;
 
     save_mqtt_config_to_file(&config)?;
 

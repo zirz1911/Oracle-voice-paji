@@ -125,6 +125,8 @@ async function showSettings() {
     document.getElementById('port').value = config.port;
     document.getElementById('topic-speak').value = config.topic_speak;
     document.getElementById('topic-status').value = config.topic_status;
+    document.getElementById('username').value = config.username || '';
+    document.getElementById('password').value = config.password || '';
   } catch (err) {
     console.error('Failed to load config:', err);
   }
@@ -156,6 +158,8 @@ async function saveSettings() {
   const port = parseInt(document.getElementById('port').value, 10);
   const topicSpeak = document.getElementById('topic-speak').value.trim();
   const topicStatus = document.getElementById('topic-status').value.trim();
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
 
   // Validation
   if (!broker) {
@@ -177,7 +181,9 @@ async function saveSettings() {
         broker,
         port,
         topic_speak: topicSpeak,
-        topic_status: topicStatus || 'voice/status'
+        topic_status: topicStatus || 'voice/status',
+        username: username || null,
+        password: password || null
       }
     });
     // Go back to main view after successful save

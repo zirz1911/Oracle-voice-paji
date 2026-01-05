@@ -47,6 +47,14 @@ async fn run_mqtt_session(state: &Arc<AppState>, config: &MqttConfig) {
     mqttoptions.set_keep_alive(Duration::from_secs(30));
     mqttoptions.set_clean_session(true);
 
+    // Set credentials if provided
+    if let (Some(username), Some(password)) = (&config.username, &config.password) {
+        if !username.is_empty() {
+            println!("MQTT: Using authentication for user '{}'", username);
+            mqttoptions.set_credentials(username, password);
+        }
+    }
+
     let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
 
     // Subscribe to voice/speak topic (queues the request, doesn't wait for connection)
