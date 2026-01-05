@@ -26,15 +26,21 @@ Voices: Samantha (default), Daniel, Karen, Rishi, Alex, Victoria
 Ports: 37779 (HTTP) | 1883 (MQTT default, configurable)
 
 CREATE HOOK FOR CLAUDE CODE:
+  Use scripts/voice-tray-notify.sh - it reads the transcript and announces:
+  - What agent finished (Main, Agent 1, Subagent, etc.)
+  - Last message from the conversation
+  - Uses different voices per agent
+
   Add to ~/.claude/settings.json:
   {
     "hooks": {
-      "Stop": [{
-        "type": "command",
-        "command": "curl -s -X POST http://127.0.0.1:37779/speak -H 'Content-Type: application/json' -d '{\"text\":\"Task done\",\"agent\":\"Claude\"}'"
-      }]
+      "Stop": [{"type":"command","command":"/path/to/scripts/voice-tray-notify.sh"}],
+      "SubagentStop": [{"type":"command","command":"/path/to/scripts/voice-tray-notify.sh"}]
     }
   }
+
+  Or simple curl (just announces "done"):
+  curl -X POST http://127.0.0.1:37779/speak -d '{"text":"Done","agent":"Claude"}'
 
 Key files:
   src-tauri/src/lib.rs    - Main app, Tauri commands
