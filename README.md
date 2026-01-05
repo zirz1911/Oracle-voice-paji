@@ -15,8 +15,8 @@ Centralized text-to-speech for Claude Code agents. A macOS menu bar app (Tauri 2
 
 ```bash
 # Build the app
-npm install
-npm run tauri build
+bun install
+bun tauri build
 
 # Copy to Applications
 cp -r "src-tauri/target/release/bundle/macos/Oracle Voice Tray.app" /Applications/
@@ -163,11 +163,32 @@ Claude Code Hook
 
 ```bash
 # Run in dev mode with hot reload
-npm run tauri dev
+bun tauri dev
 
 # Build release
-npm run tauri build
+bun tauri build
 ```
+
+## For AI Assistants
+
+If you're an AI working with this codebase:
+
+**To send voice notifications:**
+```bash
+curl -X POST http://127.0.0.1:37779/speak \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Task completed","voice":"Samantha","agent":"Claude"}'
+```
+
+**Key files:**
+- `src-tauri/src/lib.rs` - Main app logic, Tauri commands
+- `src-tauri/src/http.rs` - HTTP server (port 37779)
+- `src-tauri/src/mqtt.rs` - MQTT client
+- `src-tauri/src/tray.rs` - Tray icon, voice queue
+- `src/main.js` - Frontend logic
+- `src/styles.css` - UI styles
+
+**Build commands:** `bun tauri dev` (dev) or `bun tauri build` (release)
 
 ## Requirements
 
