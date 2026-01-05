@@ -55,7 +55,7 @@ jobs:
         working-directory: src-tauri
         run: |
           cargo llvm-cov --lib --lcov --output-path lcov.info
-          cargo llvm-cov report --lib
+          cargo llvm-cov report
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
