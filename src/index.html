@@ -53,15 +53,17 @@
             <input type="number" id="port" placeholder="1883" min="1" max="65535" />
           </div>
 
-          <div class="form-group">
-            <label for="topic-speak">Speak Topic</label>
-            <input type="text" id="topic-speak" placeholder="voice/speak" />
-          </div>
-
-          <div class="form-group">
-            <label for="topic-status">Status Topic</label>
-            <input type="text" id="topic-status" placeholder="voice/status" />
-          </div>
+          <details class="auth-section">
+            <summary>Topics</summary>
+            <div class="form-group">
+              <label for="topic-speak">Speak Topic</label>
+              <input type="text" id="topic-speak" placeholder="voice/speak" />
+            </div>
+            <div class="form-group">
+              <label for="topic-status">Status Topic</label>
+              <input type="text" id="topic-status" placeholder="voice/status" />
+            </div>
+          </details>
 
           <details class="auth-section">
             <summary>Authentication (optional)</summary>
