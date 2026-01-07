@@ -5,7 +5,8 @@
 set -e
 
 APP_NAME="Oracle Voice Tray"
-DMG_PATH="src-tauri/target/release/bundle/dmg/${APP_NAME}_0.2.0_aarch64.dmg"
+VERSION=$(grep '"version"' src-tauri/tauri.conf.json | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')
+DMG_PATH="src-tauri/target/release/bundle/dmg/${APP_NAME}_${VERSION}_aarch64.dmg"
 
 if [ ! -f "$DMG_PATH" ]; then
     echo "DMG not found at: $DMG_PATH"

@@ -1,6 +1,6 @@
 [package]
 name = "voice-tray-v2"
-version = "0.2.0"
+version = "0.2.1"
 description = "Central Voice System v2 - MQTT + HTTP backend"
 authors = ["Nat"]
 edition = "2021"
