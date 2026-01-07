@@ -368,15 +368,16 @@ You've completed the mission when:
 ### "App is damaged and can't be opened" (macOS)
 ```bash
 # This is Gatekeeper blocking unsigned apps
-# Fix: Remove quarantine attribute
+# DMG is read-only, so copy first then remove quarantine:
 
-# If app is in DMG:
-xattr -cr "/Volumes/Oracle Voice Tray/Oracle Voice Tray.app"
+# Step 1: Copy to Applications (drag-drop or command)
+cp -R "/Volumes/Oracle Voice Tray/Oracle Voice Tray.app" /Applications/
 
-# If app is in Applications:
+# Step 2: Remove quarantine attribute
 xattr -cr "/Applications/Oracle Voice Tray.app"
 
-# Or: Right-click the app → Open (not double-click)
+# Step 3: Open
+open "/Applications/Oracle Voice Tray.app"
 ```
 
 ### "tauri: command not found"
