@@ -365,6 +365,20 @@ You've completed the mission when:
 
 ## Troubleshooting
 
+### "App is damaged and can't be opened" (macOS)
+```bash
+# This is Gatekeeper blocking unsigned apps
+# Fix: Remove quarantine attribute
+
+# If app is in DMG:
+xattr -cr "/Volumes/Oracle Voice Tray/Oracle Voice Tray.app"
+
+# If app is in Applications:
+xattr -cr "/Applications/Oracle Voice Tray.app"
+
+# Or: Right-click the app → Open (not double-click)
+```
+
 ### "tauri: command not found"
 ```bash
 npm install  # Install dependencies first
