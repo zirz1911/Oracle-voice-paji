@@ -13,6 +13,7 @@ mod state;
 mod mqtt;
 mod http;
 mod tray;
+mod watcher;
 
 pub use config::{MqttConfig, load_mqtt_config, save_mqtt_config_to_file};
 pub use state::{AppState, VoiceEntry, SpeakRequest, SpeakResponse};
@@ -24,7 +25,18 @@ static LAST_CLICK: Mutex<Option<Instant>> = Mutex::new(None);
 /// Show popup window near tray icon
 fn show_popup(app: &AppHandle, x: f64, y: f64) {
     if let Some(window) = app.get_webview_window("main") {
-        let pos = PhysicalPosition::new((x - 200.0) as i32, (y + 30.0) as i32);
+        let window_height = 490.0_f64; // window height (480) + gap (10)
+
+        // macOS: tray is in menu bar at TOP → show below (y + 30)
+        // Windows/Linux: tray is in taskbar at BOTTOM → show above (y - height)
+        #[cfg(target_os = "macos")]
+        let y_pos = (y + 30.0) as i32;
+        #[cfg(not(target_os = "macos"))]
+        let y_pos = (y - window_height) as i32;
+
+        let x_pos = ((x - 200.0) as i32).max(0);
+
+        let pos = PhysicalPosition::new(x_pos, y_pos);
         let _ = window.set_position(pos);
         let _ = window.show();
         let _ = window.set_focus();
@@ -163,6 +175,9 @@ pub fn run() {
 
     // Start voice queue processor
     tray::process_queue(state_queue);
+
+    // Start Claude Code session watcher (hookless voice notifications)
+    watcher::start_session_watcher(state.clone());
 
     // Start HTTP server in background
     std::thread::spawn(move || {
