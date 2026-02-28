@@ -148,7 +148,7 @@ fn extract_task_spawn(json: &serde_json::Value) -> Option<String> {
         if item.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
             continue;
         }
-        if item.get("name").and_then(|n| n.as_str()) != Some("Task") {
+        if item.get("name").and_then(|n| n.as_str()) != Some("Agent") {
             continue;
         }
         let desc = item.pointer("/input/description")
