@@ -1,13 +1,15 @@
 /// Claude Code Session Watcher
 /// Watches ~/.claude/projects/**/*.jsonl for assistant completions.
 /// When Claude finishes a response (stop_reason: end_turn), queues a voice notification.
-/// When Claude needs tool approval (stop_reason: tool_use), queues a permission alert.
+/// When Claude needs tool approval, detects via timeout:
+///   tool_use written → no tool_result within 3s → user needs to approve.
 /// No hooks, no subprocess, no window flash.
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
@@ -18,9 +20,14 @@ use crate::state::{AppState, VoiceEntry};
 #[derive(Debug, PartialEq)]
 enum LineEvent {
     None,
-    Completion,  // stop_reason: end_turn
-    ToolUse,     // stop_reason: tool_use — needs user permission
+    Completion,   // stop_reason: end_turn
+    ToolUse,      // stop_reason: tool_use — Claude is requesting a tool
+    ToolResult,   // user message with tool_result — tool was executed (approved/denied)
 }
+
+/// How long to wait after tool_use before assuming user needs to approve.
+/// Auto-approved tools produce tool_result within milliseconds.
+const APPROVAL_TIMEOUT_SECS: u64 = 3;
 
 pub fn start_session_watcher(state: Arc<AppState>) {
     std::thread::spawn(move || {
@@ -33,6 +40,9 @@ pub fn start_session_watcher(state: Arc<AppState>) {
         let mut file_positions: HashMap<PathBuf, u64> = HashMap::new();
         let mut last_completion_notify: Option<Instant> = None;
         let mut last_approval_notify: Option<Instant> = None;
+
+        // Tracks when we last saw tool_use without a subsequent tool_result
+        let mut pending_tool_use: Option<Instant> = None;
 
         let (tx, rx) = std::sync::mpsc::channel();
         let mut watcher = match notify::recommended_watcher(tx) {
@@ -48,39 +58,60 @@ pub fn start_session_watcher(state: Arc<AppState>) {
             return;
         }
 
-        for result in rx {
-            let event = match result {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
+        loop {
+            // Use recv_timeout so we can check pending_tool_use expiry
+            // even when the file isn't being written (user is looking at permission prompt)
+            match rx.recv_timeout(Duration::from_millis(500)) {
+                Ok(Ok(event)) => {
+                    if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                        continue;
+                    }
 
-            if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
-                continue;
+                    for path in &event.paths {
+                        if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
+                            match check_new_lines(path, &mut file_positions) {
+                                LineEvent::Completion => {
+                                    pending_tool_use = None;
+                                    let should_notify = last_completion_notify
+                                        .map(|t| t.elapsed() > Duration::from_secs(2))
+                                        .unwrap_or(true);
+                                    if should_notify {
+                                        last_completion_notify = Some(Instant::now());
+                                        queue_voice(&state, "Task complete", 220);
+                                    }
+                                }
+                                LineEvent::ToolUse => {
+                                    // Start the approval timer — if no tool_result arrives
+                                    // within APPROVAL_TIMEOUT_SECS, the user needs to act
+                                    if pending_tool_use.is_none() {
+                                        pending_tool_use = Some(Instant::now());
+                                    }
+                                }
+                                LineEvent::ToolResult => {
+                                    // Tool was auto-approved or executed — cancel pending
+                                    pending_tool_use = None;
+                                }
+                                LineEvent::None => {}
+                            }
+                        }
+                    }
+                }
+                Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    // No file event — check if pending tool_use has timed out
+                }
             }
 
-            for path in &event.paths {
-                if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
-                    match check_new_lines(path, &mut file_positions) {
-                        LineEvent::Completion => {
-                            let should_notify = last_completion_notify
-                                .map(|t| t.elapsed() > Duration::from_secs(2))
-                                .unwrap_or(true);
-                            if should_notify {
-                                last_completion_notify = Some(Instant::now());
-                                queue_voice(&state, "Task complete", 220);
-                            }
-                        }
-                        LineEvent::ToolUse => {
-                            // Debounce longer — tool calls can fire rapidly in agentic mode
-                            let should_notify = last_approval_notify
-                                .map(|t| t.elapsed() > Duration::from_secs(5))
-                                .unwrap_or(true);
-                            if should_notify {
-                                last_approval_notify = Some(Instant::now());
-                                queue_voice(&state, "Action needed, please approve", 240);
-                            }
-                        }
-                        LineEvent::None => {}
+            // Check approval timeout (runs on every loop iteration)
+            if let Some(t) = pending_tool_use {
+                if t.elapsed() > Duration::from_secs(APPROVAL_TIMEOUT_SECS) {
+                    pending_tool_use = None;
+                    let should_notify = last_approval_notify
+                        .map(|t| t.elapsed() > Duration::from_secs(10))
+                        .unwrap_or(true);
+                    if should_notify {
+                        last_approval_notify = Some(Instant::now());
+                        queue_voice(&state, "Action needed, please approve", 240);
                     }
                 }
             }
@@ -96,6 +127,7 @@ fn find_claude_projects_dir() -> Option<PathBuf> {
 
 /// Read new lines appended to a .jsonl file since last check.
 /// Returns the most significant event found in the new lines.
+/// Priority: ToolResult > ToolUse > Completion > None
 fn check_new_lines(
     path: &PathBuf,
     positions: &mut HashMap<PathBuf, u64>,
@@ -127,7 +159,14 @@ fn check_new_lines(
         if line.is_empty() {
             continue;
         }
-        // Fast pre-check before full JSON parse
+
+        // Detect tool_result (user message after tool execution)
+        // This fires whether the tool was auto-approved or user-approved
+        if line.contains("tool_result") && line.contains("\"type\":\"user\"") {
+            return LineEvent::ToolResult;
+        }
+
+        // Detect assistant stop reasons
         if !line.contains("stop_reason") {
             continue;
         }
@@ -140,8 +179,7 @@ fn check_new_lines(
                     result = LineEvent::Completion;
                 }
                 Some("tool_use") => {
-                    // tool_use takes priority — user needs to act
-                    return LineEvent::ToolUse;
+                    result = LineEvent::ToolUse;
                 }
                 _ => {}
             }
