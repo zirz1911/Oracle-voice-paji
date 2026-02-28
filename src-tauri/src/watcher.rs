@@ -1,10 +1,13 @@
 /// Claude Code Session Watcher
 /// Watches ~/.claude/projects/**/*.jsonl for assistant completions.
-/// When Claude finishes a response (stop_reason: end_turn), queues a voice notification.
-/// When Claude needs tool approval, detects via timeout:
-///   tool_use written → no tool_result within 3s → user needs to approve.
-/// No hooks, no subprocess, no window flash.
+/// Reads ~/.claude/settings.json to detect current permission mode and gate alerts.
+///
+/// Permission modes:
+///   SkipAll        — skipDangerousModePermissionPrompt:true  → no approval alerts
+///   AutoAcceptEdits — autoAcceptEdits:true                   → alert only for non-edit tools
+///   Normal         — default                                  → 3s timer alerts
 use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
@@ -16,6 +19,49 @@ use chrono::Utc;
 use notify::{EventKind, RecursiveMode, Watcher};
 
 use crate::state::{AppState, VoiceEntry};
+
+/// Edit tools that are auto-approved in AutoAcceptEdits mode.
+const EDIT_TOOLS: &[&str] = &["Write", "Edit", "MultiEdit", "NotebookEdit"];
+
+#[derive(Debug, Clone, PartialEq)]
+enum PermissionMode {
+    /// --dangerously-skip-permissions: all tools auto-approved, no alerts
+    SkipAll,
+    /// "Accept edits on": file edit tools auto-approved, bash/etc still need approval
+    AutoAcceptEdits,
+    /// Default: all tools require explicit approval
+    Normal,
+}
+
+fn read_permission_mode(home: &PathBuf) -> PermissionMode {
+    let path = home.join(".claude").join("settings.json");
+    let Ok(content) = fs::read_to_string(&path) else {
+        return PermissionMode::Normal;
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return PermissionMode::Normal;
+    };
+
+    if json.get("skipDangerousModePermissionPrompt")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return PermissionMode::SkipAll;
+    }
+
+    // "Accept edits on" mode — Claude Code may use one of these field names
+    let auto_accept = json.get("autoAcceptEdits")
+        .or_else(|| json.get("acceptEdits"))
+        .or_else(|| json.get("autoApproveEdits"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if auto_accept {
+        return PermissionMode::AutoAcceptEdits;
+    }
+
+    PermissionMode::Normal
+}
 
 #[derive(Debug, PartialEq)]
 enum LineEvent {
@@ -32,18 +78,26 @@ const APPROVAL_TIMEOUT_SECS: u64 = 3;
 
 pub fn start_session_watcher(state: Arc<AppState>) {
     std::thread::spawn(move || {
-        let Some(projects_dir) = find_claude_projects_dir() else {
-            println!("[watcher] ~/.claude/projects not found — session watcher disabled");
+        let Some(home) = dirs::home_dir() else {
+            println!("[watcher] home dir not found — session watcher disabled");
             return;
         };
+
+        let projects_dir = home.join(".claude").join("projects");
+        if !projects_dir.exists() {
+            println!("[watcher] ~/.claude/projects not found — session watcher disabled");
+            return;
+        }
+
+        let settings_file = home.join(".claude").join("settings.json");
         println!("[watcher] Watching: {}", projects_dir.display());
 
         let mut file_positions: HashMap<PathBuf, u64> = HashMap::new();
         let mut last_completion_notify: Option<Instant> = None;
         let mut last_approval_notify: Option<Instant> = None;
-
-        // Tracks when we last saw tool_use without a subsequent tool_result
         let mut pending_tool_use: Option<Instant> = None;
+        let mut perm_mode = read_permission_mode(&home);
+        println!("[watcher] Permission mode: {:?}", perm_mode);
 
         let (tx, rx) = std::sync::mpsc::channel();
         let mut watcher = match notify::recommended_watcher(tx) {
@@ -55,13 +109,15 @@ pub fn start_session_watcher(state: Arc<AppState>) {
         };
 
         if let Err(e) = watcher.watch(&projects_dir, RecursiveMode::Recursive) {
-            println!("[watcher] Failed to watch directory: {}", e);
+            println!("[watcher] Failed to watch projects dir: {}", e);
             return;
+        }
+        // Also watch settings.json so mode changes take effect immediately
+        if settings_file.exists() {
+            let _ = watcher.watch(&settings_file, RecursiveMode::NonRecursive);
         }
 
         loop {
-            // Use recv_timeout so we can check pending_tool_use expiry
-            // even when the file isn't being written (user is looking at permission prompt)
             match rx.recv_timeout(Duration::from_millis(500)) {
                 Ok(Ok(event)) => {
                     if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
@@ -69,6 +125,17 @@ pub fn start_session_watcher(state: Arc<AppState>) {
                     }
 
                     for path in &event.paths {
+                        // Re-read mode when settings.json changes
+                        if path == &settings_file {
+                            perm_mode = read_permission_mode(&home);
+                            println!("[watcher] Permission mode updated: {:?}", perm_mode);
+                            // If mode changed to skip-all, clear any pending alert
+                            if perm_mode == PermissionMode::SkipAll {
+                                pending_tool_use = None;
+                            }
+                            continue;
+                        }
+
                         if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
                             match check_new_lines(path, &mut file_positions) {
                                 LineEvent::Completion => {
@@ -82,18 +149,17 @@ pub fn start_session_watcher(state: Arc<AppState>) {
                                     }
                                 }
                                 LineEvent::SubagentSpawn(desc) => {
-                                    // Announce immediately — no permission wait needed
                                     queue_voice(&state, &format!("Spawning {}", desc), 230);
                                 }
                                 LineEvent::ToolUse => {
-                                    // Start the approval timer — if no tool_result arrives
-                                    // within APPROVAL_TIMEOUT_SECS, the user needs to act
-                                    if pending_tool_use.is_none() {
+                                    // Only start timer when mode requires user approval
+                                    if perm_mode == PermissionMode::Normal
+                                        && pending_tool_use.is_none()
+                                    {
                                         pending_tool_use = Some(Instant::now());
                                     }
                                 }
                                 LineEvent::ToolResult => {
-                                    // Tool was auto-approved or executed — cancel pending
                                     pending_tool_use = None;
                                 }
                                 LineEvent::None => {}
@@ -102,32 +168,26 @@ pub fn start_session_watcher(state: Arc<AppState>) {
                     }
                 }
                 Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // No file event — check if pending tool_use has timed out
-                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
 
-            // Check approval timeout (runs on every loop iteration)
-            if let Some(t) = pending_tool_use {
-                if t.elapsed() > Duration::from_secs(APPROVAL_TIMEOUT_SECS) {
-                    pending_tool_use = None;
-                    let should_notify = last_approval_notify
-                        .map(|t| t.elapsed() > Duration::from_secs(10))
-                        .unwrap_or(true);
-                    if should_notify {
-                        last_approval_notify = Some(Instant::now());
-                        queue_voice(&state, "Action needed, please approve", 240);
+            // Check approval timeout — only in Normal mode
+            if perm_mode == PermissionMode::Normal {
+                if let Some(t) = pending_tool_use {
+                    if t.elapsed() > Duration::from_secs(APPROVAL_TIMEOUT_SECS) {
+                        pending_tool_use = None;
+                        let should_notify = last_approval_notify
+                            .map(|t| t.elapsed() > Duration::from_secs(10))
+                            .unwrap_or(true);
+                        if should_notify {
+                            last_approval_notify = Some(Instant::now());
+                            queue_voice(&state, "Action needed, please approve", 240);
+                        }
                     }
                 }
             }
         }
     });
-}
-
-fn find_claude_projects_dir() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-    let path = home.join(".claude").join("projects");
-    if path.exists() { Some(path) } else { None }
 }
 
 /// Read new lines appended to a .jsonl file since last check.
