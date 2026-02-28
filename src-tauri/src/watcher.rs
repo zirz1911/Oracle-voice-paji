@@ -20,9 +20,10 @@ use crate::state::{AppState, VoiceEntry};
 #[derive(Debug, PartialEq)]
 enum LineEvent {
     None,
-    Completion,   // stop_reason: end_turn
-    ToolUse,      // stop_reason: tool_use — Claude is requesting a tool
-    ToolResult,   // user message with tool_result — tool was executed (approved/denied)
+    Completion,              // stop_reason: end_turn → "Claude Stop"
+    ToolUse,                 // stop_reason: tool_use (non-Task) → permission timer
+    SubagentSpawn(String),   // tool_use name=Task → announce description immediately
+    ToolResult,              // user message with tool_result — tool was executed
 }
 
 /// How long to wait after tool_use before assuming user needs to approve.
@@ -77,8 +78,12 @@ pub fn start_session_watcher(state: Arc<AppState>) {
                                         .unwrap_or(true);
                                     if should_notify {
                                         last_completion_notify = Some(Instant::now());
-                                        queue_voice(&state, "Task complete", 220);
+                                        queue_voice(&state, "Claude Stop", 220);
                                     }
+                                }
+                                LineEvent::SubagentSpawn(desc) => {
+                                    // Announce immediately — no permission wait needed
+                                    queue_voice(&state, &format!("Spawning {}", desc), 230);
                                 }
                                 LineEvent::ToolUse => {
                                     // Start the approval timer — if no tool_result arrives
@@ -179,6 +184,10 @@ fn check_new_lines(
                     result = LineEvent::Completion;
                 }
                 Some("tool_use") => {
+                    // Check if any tool in the content array is a Task (subagent spawn)
+                    if let Some(spawn) = extract_task_spawn(&json) {
+                        return LineEvent::SubagentSpawn(spawn);
+                    }
                     result = LineEvent::ToolUse;
                 }
                 _ => {}
@@ -186,6 +195,27 @@ fn check_new_lines(
         }
     }
     result
+}
+
+/// If the assistant message contains a Task tool_use, return its description.
+/// Falls back to subagent_type if description is absent.
+fn extract_task_spawn(json: &serde_json::Value) -> Option<String> {
+    let content = json.pointer("/message/content")?.as_array()?;
+    for item in content {
+        if item.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+            continue;
+        }
+        if item.get("name").and_then(|n| n.as_str()) != Some("Task") {
+            continue;
+        }
+        // Prefer description, fall back to subagent_type
+        let desc = item.pointer("/input/description")
+            .and_then(|d| d.as_str())
+            .or_else(|| item.pointer("/input/subagent_type").and_then(|t| t.as_str()))
+            .unwrap_or("agent");
+        return Some(desc.to_string());
+    }
+    None
 }
 
 fn queue_voice(state: &Arc<AppState>, text: &str, rate: u32) {
