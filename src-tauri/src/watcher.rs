@@ -20,9 +20,6 @@ use notify::{EventKind, RecursiveMode, Watcher};
 
 use crate::state::{AppState, VoiceEntry};
 
-/// Edit tools that are auto-approved in AutoAcceptEdits mode.
-const EDIT_TOOLS: &[&str] = &["Write", "Edit", "MultiEdit", "NotebookEdit"];
-
 #[derive(Debug, Clone, PartialEq)]
 enum PermissionMode {
     /// --dangerously-skip-permissions: all tools auto-approved, no alerts
@@ -67,14 +64,19 @@ fn read_permission_mode(home: &PathBuf) -> PermissionMode {
 enum LineEvent {
     None,
     Completion,              // stop_reason: end_turn → "Claude Stop"
-    ToolUse,                 // stop_reason: tool_use (non-Task) → permission timer
+    ToolUse(bool),           // stop_reason: tool_use — bool: needs_approval (Bash only)
     SubagentSpawn(String),   // tool_use name=Task → announce description immediately
     ToolResult,              // user message with tool_result — tool was executed
 }
 
+/// Tools that may require explicit user approval in Normal mode.
+/// Read-only and safe tools (Read, Glob, Grep, WebFetch, WebSearch, Agent/Task)
+/// are auto-approved and should not trigger the approval timer.
+const APPROVAL_TOOLS: &[&str] = &["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"];
+
 /// How long to wait after tool_use before assuming user needs to approve.
-/// Auto-approved tools produce tool_result within milliseconds.
-const APPROVAL_TIMEOUT_SECS: u64 = 3;
+/// 15s to avoid false positives from slow-running auto-approved tools.
+const APPROVAL_TIMEOUT_SECS: u64 = 15;
 
 pub fn start_session_watcher(state: Arc<AppState>) {
     std::thread::spawn(move || {
@@ -151,9 +153,10 @@ pub fn start_session_watcher(state: Arc<AppState>) {
                                 LineEvent::SubagentSpawn(desc) => {
                                     queue_voice(&state, &format!("Spawning {}", desc), 230);
                                 }
-                                LineEvent::ToolUse => {
-                                    // Only start timer when mode requires user approval
+                                LineEvent::ToolUse(needs_approval) => {
+                                    // Only start timer when mode requires approval AND tool is approval-gated
                                     if perm_mode == PermissionMode::Normal
+                                        && needs_approval
                                         && pending_tool_use.is_none()
                                     {
                                         pending_tool_use = Some(Instant::now());
@@ -248,7 +251,10 @@ fn check_new_lines(
                     if let Some(spawn) = extract_task_spawn(&json) {
                         return LineEvent::SubagentSpawn(spawn);
                     }
-                    result = LineEvent::ToolUse;
+                    let needs_approval = extract_tool_names(&json)
+                        .iter()
+                        .any(|name| APPROVAL_TOOLS.contains(&name.as_str()));
+                    result = LineEvent::ToolUse(needs_approval);
                 }
                 _ => {}
             }
@@ -276,6 +282,17 @@ fn extract_task_spawn(json: &serde_json::Value) -> Option<String> {
         return Some(desc.to_string());
     }
     None
+}
+
+/// Return all tool names used in this assistant message.
+fn extract_tool_names(json: &serde_json::Value) -> Vec<String> {
+    let Some(content) = json.pointer("/message/content").and_then(|c| c.as_array()) else {
+        return vec![];
+    };
+    content.iter()
+        .filter(|item| item.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
+        .filter_map(|item| item.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+        .collect()
 }
 
 fn queue_voice(state: &Arc<AppState>, text: &str, rate: u32) {
