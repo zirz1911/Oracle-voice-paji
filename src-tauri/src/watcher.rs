@@ -141,21 +141,62 @@ fn check_new_lines(
     result
 }
 
-/// If the assistant message contains a Task tool_use, return its description.
+/// Map text to Norse agent name if any keyword is found.
+fn detect_norse(text: &str) -> Option<&'static str> {
+    let t = text.to_lowercase();
+    if t.contains("thor")     { return Some("Thor") }
+    if t.contains("heimdall") { return Some("Heimdall") }
+    if t.contains("tyr")      { return Some("Tyr") }
+    if t.contains("ymir")     { return Some("Ymir") }
+    if t.contains("odin")     { return Some("Odin") }
+    if t.contains("loki")     { return Some("Loki") }
+    if t.contains("huginn")   { return Some("Huginn") }
+    None
+}
+
+/// If the assistant message contains a subagent spawn tool_use, return its name.
 fn extract_task_spawn(json: &serde_json::Value) -> Option<String> {
     let content = json.pointer("/message/content")?.as_array()?;
     for item in content {
         if item.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
             continue;
         }
-        if item.get("name").and_then(|n| n.as_str()) != Some("Agent") {
-            continue;
+        let tool_name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+
+        // MCP local-llm direct calls → Norse name from tool name
+        if tool_name.contains("query_thor")     { return Some("Thor".to_string()) }
+        if tool_name.contains("query_heimdall") { return Some("Heimdall".to_string()) }
+        if tool_name.contains("query_loki")     { return Some("Loki".to_string()) }
+        if tool_name.contains("query_tyr")      { return Some("Tyr".to_string()) }
+
+        // Agent subagent spawn
+        if tool_name == "Agent" {
+            let desc = item.pointer("/input/description")
+                .and_then(|d| d.as_str()).unwrap_or("");
+            let prompt = item.pointer("/input/prompt")
+                .and_then(|p| p.as_str()).unwrap_or("");
+            let subagent_type = item.pointer("/input/subagent_type")
+                .and_then(|t| t.as_str()).unwrap_or("");
+
+            // Try Norse name from description → prompt → subagent_type
+            if let Some(name) = detect_norse(desc)
+                .or_else(|| detect_norse(prompt))
+                .or_else(|| detect_norse(subagent_type))
+            {
+                return Some(name.to_string());
+            }
+
+            // Fallback: subagent_type → friendly name
+            let label = match subagent_type {
+                "Explore"         => "Heimdall",
+                "general-purpose" => "Agent",
+                "Plan"            => "Tyr",
+                other if !other.is_empty() => other,
+                _ if !desc.is_empty() => desc,
+                _ => "Agent",
+            };
+            return Some(label.to_string());
         }
-        let desc = item.pointer("/input/description")
-            .and_then(|d| d.as_str())
-            .or_else(|| item.pointer("/input/subagent_type").and_then(|t| t.as_str()))
-            .unwrap_or("agent");
-        return Some(desc.to_string());
     }
     None
 }
